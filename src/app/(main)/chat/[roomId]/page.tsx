@@ -8,14 +8,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Textarea } from '@/components/ui/textarea';
-import { 
-    getRoomById, 
-    getMessagesForRoom, 
-    addMessageToRoom,
-    updateMessageInRoom,
-    deleteRoom,
-    joinRoom,
-    leaveRoom,
+import {
+  getRoomById,
+  getMessagesForRoom,
+  addMessageToRoom,
+  updateMessageInRoom,
+  deleteRoom,
+  joinRoom,
+  leaveRoom,
 } from '@/lib/data';
 import type { Message, Room, User } from '@/lib/data';
 import { Users, Send, DoorOpen, DoorClosed, Trash2, Pencil } from 'lucide-react';
@@ -30,6 +30,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { Timestamp } from 'firebase/firestore';
