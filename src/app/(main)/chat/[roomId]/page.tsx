@@ -46,7 +46,8 @@ function ChatMessage({
     onStartEdit,
     onSaveEdit,
     onCancelEdit,
-}: { 
+    showAuthor,
+}: {
     message: Message, 
     isCurrentUser: boolean,
     isEditing: boolean,
@@ -55,78 +56,107 @@ function ChatMessage({
     onStartEdit: (messageId: string, currentText: string) => void,
     onSaveEdit: (messageId: string) => void,
     onCancelEdit: () => void,
+    showAuthor: boolean,
 }) {
+
   const [isEditable, setIsEditable] = useState(false);
 
   useEffect(() => {
     if (message.timestamp) {
         const fiveMinutes = 5 * 60 * 1000;
-        const messageTime = (message.timestamp as Timestamp).toMillis();
+        // Ensure message.timestamp is a Timestamp object before calling toMillis()
+        const messageTime = message.timestamp instanceof Timestamp ? message.timestamp.toMillis() : new Date(message.timestamp).getTime();
         const isWithinTimeLimit = Date.now() - messageTime < fiveMinutes;
         setIsEditable(isWithinTimeLimit);
     }
   }, [message.timestamp]);
 
-  const messageDate = message.timestamp ? (message.timestamp as Timestamp).toDate() : new Date();
+  const messageDate = message.timestamp ? (message.timestamp instanceof Timestamp ? message.timestamp.toDate() : new Date(message.timestamp)) : new Date();
 
   return (
-    <div className={cn("flex items-start gap-3 my-4", isCurrentUser && "flex-row-reverse")}>
-      <Avatar className="h-10 w-10 border-2 border-accent">
-        <AvatarImage src={message.author.avatarUrl} alt={message.author.name} />
-        <AvatarFallback>{message.author.name.charAt(0)}</AvatarFallback>
-      </Avatar>
-      <div className={cn("flex flex-col gap-1 max-w-xs md:max-w-md", isCurrentUser && "items-end")}>
-        <div className="flex items-center gap-2">
-            <span className="font-semibold">{message.author.name}</span>
+  <div className={cn("flex items-start gap-2 my-1", isCurrentUser && "flex-row-reverse")}>
+    
+    {/* Avatar (space is always preserved) */}
+    <div className="w-10 h-10 shrink-0">
+      {showAuthor ? (
+        <Avatar className="h-10 w-10 border-2 border-accent">
+          <AvatarImage src={message.author.avatarUrl} alt={message.author.name} />
+          <AvatarFallback>{message.author.name.charAt(0)}</AvatarFallback>
+        </Avatar>
+      ) : (
+        <div className="h-10 w-10" /> // invisible space placeholder
+      )}
+    </div>
+
+    <div className={cn("flex flex-col gap-1 max-w-xs md:max-w-md", isCurrentUser && "items-end")}>
+      
+      {/* Name (space is always preserved) */}
+      <div className="flex items-center gap-2 min-h-[1.25rem]">
+        {showAuthor && (
+          <span className="font-semibold">{message.author.name}</span>
+        )}
+      </div>
+
+
+        <div className="flex gap-1 items-start group w-fit relative">
+  <div className="flex flex-col">
+    <div className={cn(
+      "p-3 rounded-lg",
+      isCurrentUser ? "bg-primary text-primary-foreground" : "bg-secondary"
+    )}>
+      {isEditing ? (
+        <div className="w-full">
+          <Textarea 
+            value={editedText}
+            onChange={(e) => setEditedText(e.target.value)}
+            className="bg-background/80 text-foreground h-auto text-sm"
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                onSaveEdit(message.id);
+              }
+              if (e.key === 'Escape') {
+                onCancelEdit();
+              }
+            }}
+          />
+          <div className="flex gap-2 justify-end mt-2">
+            <Button variant="ghost" size="sm" onClick={onCancelEdit}>Cancel</Button>
+            <Button size="sm" onClick={() => onSaveEdit(message.id)}>Save changes</Button>
+          </div>
         </div>
-        <div className={cn("group relative flex items-end gap-1")}>
-            <div className={cn(
-                "p-3 rounded-lg", 
-                isCurrentUser ? "bg-primary text-primary-foreground" : "bg-secondary"
-            )}>
-                {isEditing ? (
-                    <div className="w-full">
-                        <Textarea 
-                            value={editedText}
-                            onChange={(e) => setEditedText(e.target.value)}
-                            className="bg-background/80 text-foreground h-auto text-sm"
-                            autoFocus
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter' && !e.shiftKey) {
-                                    e.preventDefault();
-                                    onSaveEdit(message.id);
-                                }
-                                if (e.key === 'Escape') {
-                                    onCancelEdit();
-                                }
-                            }}
-                        />
-                        <div className="flex gap-2 justify-end mt-2">
-                            <Button variant="ghost" size="sm" onClick={onCancelEdit}>Cancel</Button>
-                            <Button size="sm" onClick={() => onSaveEdit(message.id)}>Save changes</Button>
-                        </div>
-                    </div>
-                ) : (
-                    <div className="relative">
-                        <p className="text-sm break-words whitespace-pre-wrap pr-12">{message.text}</p>
-                        <span className={cn("text-xs absolute bottom-0 right-0", isCurrentUser ? "text-primary-foreground/70" : "text-muted-foreground")}>
-                          {messageDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-                        </span>
-                    </div>
-                )}
-            </div>
-             {isCurrentUser && !isEditing && isEditable && (
-                <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                    onClick={() => onStartEdit(message.id, message.text)}
-                >
-                    <Pencil className="h-3 w-3" />
-                    <span className="sr-only">Edit Message</span>
-                </Button>
-            )}
+      ) : (
+        <div className="relative">
+          <p className="text-sm break-words whitespace-pre-wrap pr-12">{message.text}</p>
+          <span className={cn("text-xs absolute bottom-0 right-0", isCurrentUser ? "text-primary-foreground/70" : "text-muted-foreground")}>
+            {messageDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+          </span>
         </div>
+      )}
+    </div>
+  </div>
+{/* ICON on the left side of the bubble */}
+<div className="w-4 mt-1 ml-1.5">
+  {isCurrentUser && !isEditing && (
+    <Button 
+      variant="ghost"
+      size="icon"
+      className={cn(
+  "h-4 w-4 p-0 bg-transparent text-inherit hover:bg-transparent hover:text-inherit focus:bg-transparent",
+  isEditable ? "opacity-100" : "opacity-0 pointer-events-none"
+)}
+
+      onClick={() => onStartEdit(message.id, message.text)}
+    >
+      <Pencil className="h-3 w-3" />
+      <span className="sr-only">Edit</span>
+    </Button>
+  )}
+</div>
+
+</div>
+
       </div>
     </div>
   )
@@ -143,7 +173,18 @@ export default function ChatRoomPage() {
   const [isLoading, setIsLoading] = useState(true);
 
   const [isJoined, setIsJoined] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
   const [newMessage, setNewMessage] = useState('');
+  useEffect(() => {
+  if (isJoined && inputRef.current) {
+    // Slight delay ensures DOM is ready
+    const timeout = setTimeout(() => {
+      inputRef.current?.focus();
+    }, 100);
+    return () => clearTimeout(timeout);
+  }
+}, [isJoined, messages.length]); // ⚠️ we use `messages.length` to re-focus after sending
+
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editedText, setEditedText] = useState('');
   
@@ -179,7 +220,7 @@ export default function ChatRoomPage() {
           setIsLoading(false);
       }
   }, [roomId, session?.user?.id]);
-  
+
   useEffect(() => {
     if (status === 'authenticated') {
         fetchRoomAndMessages();
@@ -234,12 +275,14 @@ export default function ChatRoomPage() {
         } else {
             await leaveRoom(roomId, session.user.id);
         }
-        fetchRoomAndMessages(); // Re-sync with the server
+        // No need to fetch all messages here, room members update is enough.
+        // If message history depends on membership, then a full refetch might be needed.
+        // For now, we'll assume messages persist regardless of membership.
     } catch(error) {
         console.error("Failed to join/leave room:", error);
         // Revert optimistic update on failure
         setIsJoined(!optimisticIsJoined);
-        setRoom(prev => prev ? { ...prev, members: prev.members + (optimisticIsJoined ? -1 : 1) } : null);
+        setRoom(prev => prev ? { ...prev, members: prev.members + (optimisticIsJoined ? -1 : 1)} : null);
     }
   }
   
@@ -259,31 +302,33 @@ export default function ChatRoomPage() {
     if (newMessage.trim() === '' || !session?.user) return;
     
     const currentUser = session.user as User;
-    const tempMessageId = Date.now().toString();
+    const messageText = newMessage;
+    setNewMessage('');
+    inputRef.current?.focus();
 
     // Optimistic update
+    const tempId = Date.now().toString(); // A temporary ID for the optimistic message
     const newMessageObj: Message = {
-      id: tempMessageId,
+      id: tempId,
       author: {
         id: currentUser.id,
         name: currentUser.name ?? 'You',
         avatarUrl: currentUser.image ?? '',
       },
-      text: newMessage,
-      timestamp: Timestamp.now(),
+      text: messageText,
+      timestamp: Timestamp.now(), // Use current timestamp for optimistic display
     };
     setMessages(prev => [...prev, newMessageObj]);
-    const messageText = newMessage;
-    setNewMessage('');
 
     try {
-      await addMessageToRoom(roomId, messageText, currentUser);
-      fetchRoomAndMessages(); // Re-sync
+      const sentMessage = await addMessageToRoom(roomId, messageText, currentUser);
+      // Replace the optimistic message with the actual message from the backend
+      setMessages(prev => prev.map(m => m.id === tempId ? { ...m, id: sentMessage } : m));
     } catch (error) {
         console.error("Failed to send message:", error);
-        // Revert optimistic update
-        setMessages(prev => prev.filter(m => m.id !== tempMessageId));
-        setNewMessage(messageText);
+        // Revert optimistic update if sending fails
+        setMessages(prev => prev.filter(m => m.id !== tempId));
+        setNewMessage(messageText); // Restore message to input field
     }
   };
   
@@ -304,10 +349,11 @@ export default function ChatRoomPage() {
     
     // Optimistic update
     setMessages(prev => prev.map(m => m.id === messageId ? { ...m, text: editedText } : m));
-    handleCancelEdit();
-    
+    handleCancelEdit(); // Close the edit state
+
     try {
         await updateMessageInRoom(roomId, messageId, editedText, session.user.id);
+        // No full refetch needed, optimistic update handles it.
     } catch (error) {
         console.error("Failed to save edit:", error);
         // Revert
@@ -395,19 +441,26 @@ export default function ChatRoomPage() {
       {/* Chat Area */}
       <ScrollArea className="flex-1 p-4">
           <div className="container mx-auto">
-            {messages.map((msg) => (
+            {messages.map((msg, index) => {
+              const prevMsg = messages[index - 1];
+              const isSameAuthorAsPrev = prevMsg && prevMsg.author.id === msg.author.id;
+
+              return (
                 <ChatMessage 
-                    key={msg.id} 
-                    message={msg} 
-                    isCurrentUser={msg.author.id === session?.user?.id}
-                    isEditing={editingMessageId === msg.id}
-                    onStartEdit={handleStartEdit}
-                    onCancelEdit={handleCancelEdit}
-                    onSaveEdit={handleSaveEdit}
-                    editedText={editedText}
-                    setEditedText={setEditedText}
+                  key={msg.id}
+                  message={msg}
+                  isCurrentUser={msg.author.id === session?.user?.id}
+                  isEditing={editingMessageId === msg.id}
+                  onStartEdit={handleStartEdit}
+                  onCancelEdit={handleCancelEdit}
+                  onSaveEdit={handleSaveEdit}
+                  editedText={editedText}
+                  setEditedText={setEditedText}
+                  showAuthor={!isSameAuthorAsPrev}
                 />
-            ))}
+              );
+            })}
+
             <div ref={messagesEndRef} />
           </div>
       </ScrollArea>
@@ -418,6 +471,7 @@ export default function ChatRoomPage() {
             <div className="container mx-auto">
                 <form onSubmit={handleSendMessage} className="relative">
                     <Input 
+                      ref={inputRef}
                       placeholder="Type a message..." 
                       className="pr-12 h-12 text-base"
                       value={newMessage}
