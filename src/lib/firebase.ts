@@ -2,10 +2,9 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
+import { getStorage } from "firebase/storage"; // 👈 ADD THIS
 
-// Your web app's Firebase configuration, read from environment variables.
-// For more information on how to get this, visit:
-// https://firebase.google.com/docs/web/setup#available-libraries
+// Your web app's Firebase configuration, read from environment variables
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -17,7 +16,9 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+
 const db = getFirestore(app);
 const auth = getAuth(app);
+const storage = getStorage(app); // 👈 ADD THIS
 
-export { db, auth };
+export { db, auth, storage }; // 👈 AND EXPORT IT
