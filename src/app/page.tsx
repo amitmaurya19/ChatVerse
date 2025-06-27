@@ -1,6 +1,4 @@
-import Link from 'next/link';
-import { Button } from '@/components/ui/button';
-import { signIn } from 'next-auth/react';
+
 import { WelcomeClient } from '@/components/welcome-client';
 
 export default function WelcomePage() {

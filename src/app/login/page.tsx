@@ -1,4 +1,22 @@
+// Actual Login Page (client)
 "use client";
+
+import { Suspense } from "react";
+
+// Wrap your client login UI separately
+function LoginPageWrapper() {
+  return (
+    <Suspense fallback={<div>Loading login...</div>}>
+      <LoginPage />
+    </Suspense>
+  );
+}
+
+export default function LoginPageRoot() {
+  return <LoginPageWrapper />;
+}
+
+
 
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -19,7 +37,7 @@ const LoginSchema = z.object({
   password: z.string().min(1, { message: "Password is required." }),
 });
 
-export default function LoginPage() {
+function LoginPage() {
   const searchParams = useSearchParams();
   const errorFromUrl = searchParams.get('error');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -38,7 +56,7 @@ export default function LoginPage() {
       email: values.email,
       password: values.password,
       callbackUrl: '/home',
-      redirect: true, // We will handle redirect manually based on response
+      redirect: true,
     });
     setIsSubmitting(false);
   };
