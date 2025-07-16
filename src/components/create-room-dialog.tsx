@@ -18,6 +18,8 @@ import { ImagePlus, Lock, Globe } from "lucide-react";
 import type { Room } from "@/lib/data";
 import { storage } from "@/lib/firebase";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { useToast } from "@/hooks/use-toast";
+
 
 interface CreateRoomDialogProps {
   open: boolean;
@@ -35,10 +37,11 @@ export function CreateRoomDialog({
   const [roomName, setRoomName] = useState("");
   const [description, setDescription] = useState("");
   const [roomType, setRoomType] = useState<"public" | "private">("public");
+  const [passkey, setPasskey] = useState("");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const { toast } = useToast();
 
-  // 🛠️ Upload to Firebase
   const uploadImageToFirebase = async (file: File): Promise<string> => {
     const fileName = `rooms/${Date.now()}-${file.name}`;
     const storageRef = ref(storage, fileName);
@@ -47,18 +50,21 @@ export function CreateRoomDialog({
     return downloadURL;
   };
 
-  // 🎯 Handle file upload and get permanent URL
   const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
       const file = event.target.files[0];
-      setPreviewUrl(URL.createObjectURL(file)); // temp preview
+      setPreviewUrl(URL.createObjectURL(file));
       setUploading(true);
       try {
         const firebaseUrl = await uploadImageToFirebase(file);
-        setPreviewUrl(firebaseUrl); // use real Firebase URL now!
+        setPreviewUrl(firebaseUrl);
       } catch (error) {
         console.error("Image upload failed:", error);
-        alert("Image upload failed.");
+        toast({
+            title: "Error",
+            description: "Image upload failed.",
+            variant: "destructive",
+        })
       } finally {
         setUploading(false);
       }
@@ -70,6 +76,7 @@ export function CreateRoomDialog({
     setDescription("");
     setRoomType("public");
     setPreviewUrl(null);
+    setPasskey("");
   };
 
   const handleOpenChange = (isOpen: boolean) => {
@@ -81,7 +88,15 @@ export function CreateRoomDialog({
 
   // 🔥 Called when user clicks "Create Room"
   const handleCreateRoom = () => {
-    if (!roomName.trim() || !description.trim()) return;
+    // ✨ Add a check to ensure private rooms have a passkey
+    if (roomType === 'private' && passkey.trim() === '') {
+        toast({
+            title: "Passkey Required",
+            description: "Private rooms must have a passkey.",
+            variant: "destructive",
+        })
+        return;
+    }
 
     const newRoomData: Omit<
       Room,
@@ -93,11 +108,16 @@ export function CreateRoomDialog({
       avatarUrl:
         previewUrl || "https://placehold.co/100x100/03DAC6/121212.png",
       avatarFallback: roomName.slice(0, 2).toUpperCase(),
+      ...(roomType === "private" && { passkey }),
     };
 
     onRoomCreate(newRoomData);
     handleOpenChange(false);
   };
+
+  // ✨ Disable button if required fields are missing
+  const isCreateDisabled = !roomName.trim() || !description.trim() || uploading || (roomType === 'private' && !passkey.trim());
+
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -178,11 +198,13 @@ export function CreateRoomDialog({
           </div>
           {roomType === "private" && (
             <div className="grid gap-2">
-              <Label htmlFor="passkey">Passkey (Optional)</Label>
+              <Label htmlFor="passkey">Passkey (Required for Private Room)</Label>
               <Input
                 id="passkey"
                 type="password"
                 placeholder="Enter a passkey for your private room"
+                value={passkey}
+                onChange={(e) => setPasskey(e.target.value)}
               />
             </div>
           )}
@@ -192,7 +214,7 @@ export function CreateRoomDialog({
             type="button"
             className="font-bold"
             onClick={handleCreateRoom}
-            disabled={uploading}
+            disabled={isCreateDisabled} // ✨ Use the new disabled state
           >
             {uploading ? "Uploading..." : "Create Room"}
           </Button>
