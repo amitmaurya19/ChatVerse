@@ -22,14 +22,14 @@ interface JoinPrivateRoomDialogProps {
   room: Room | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onRoomJoined: (roomId: string) => void; // ✨ Accept the new prop
+  onRoomJoined: (roomId: string) => void;
 }
 
 export function JoinPrivateRoomDialog({
   room,
   open,
   onOpenChange,
-  onRoomJoined, // ✨ Use the new prop
+  onRoomJoined,
 }: JoinPrivateRoomDialogProps) {
   const [passkey, setPasskey] = useState("");
   const [error, setError] = useState("");
@@ -45,9 +45,13 @@ export function JoinPrivateRoomDialog({
 
     if (passkey === room.passkey) {
       try {
-        await joinRoom(room.id, session.user.id);
-        
-        onRoomJoined(room.id); // ✨ Call the function to update the home page state
+        // ✨ This is the key fix: Only join if the user is NOT already a member.
+        const isAlreadyMember = room.memberIds.includes(session.user.id);
+
+        if (!isAlreadyMember) {
+          await joinRoom(room.id, session.user.id);
+          onRoomJoined(room.id); // Update the member count on the home page
+        }
 
         toast({
           title: "Success!",

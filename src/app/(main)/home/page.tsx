@@ -36,7 +36,6 @@ function RoomCard({ room, onCardClick }: { room: Room; onCardClick: (room: Room)
         <CardFooter>
           <div className="flex items-center text-sm text-muted-foreground">
             <Users className="h-4 w-4 mr-2" />
-            {/* ✨ The member count will now update in real-time */}
             <span>{room.members} members</span>
           </div>
         </CardFooter>
@@ -75,21 +74,31 @@ export default function HomePage() {
     }
   };
 
+  // This function decides what to do when a card is clicked
   const handleCardClick = (room: Room) => {
+    if (!session?.user) return; // Ensure user is logged in
+
     if (room.type === 'public') {
       router.push(`/chat/${room.id}`);
-    } else {
-      setSelectedRoom(room);
-      setJoinRoomOpen(true);
+    } else { // This is a private room
+      // ✨ This is the key fix: Check if user is already a member
+      const isAlreadyMember = room.memberIds.includes(session.user.id);
+      if (isAlreadyMember) {
+        // If they are a member, let them in without asking for a passkey
+        router.push(`/chat/${room.id}`);
+      } else {
+        // If they are not a member, ask for the passkey
+        setSelectedRoom(room);
+        setJoinRoomOpen(true);
+      }
     }
   };
 
-  // ✨ This new function updates the room list after a user joins a private room
   const handleRoomJoined = (roomId: string) => {
     setRooms(prevRooms =>
       prevRooms.map(room =>
         room.id === roomId
-          ? { ...room, members: room.members + 1 }
+          ? { ...room, members: room.members + 1, memberIds: [...room.memberIds, session!.user!.id] } // ✨ Also update memberIds to prevent re-prompt
           : room
       )
     );
@@ -150,7 +159,7 @@ export default function HomePage() {
             room={selectedRoom}
             open={isJoinRoomOpen}
             onOpenChange={setJoinRoomOpen}
-            onRoomJoined={handleRoomJoined} // ✨ Pass the function as a prop
+            onRoomJoined={handleRoomJoined}
           />
         </>
       )}
