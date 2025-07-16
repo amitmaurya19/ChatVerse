@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -18,52 +18,38 @@ import { Lock, Globe } from "lucide-react";
 import type { Room } from "@/lib/data";
 import { useToast } from "@/hooks/use-toast";
 
-interface CreateRoomDialogProps {
+// Define the shape of the data that can be updated
+export type RoomUpdateData = Partial<Pick<Room, 'description' | 'type' | 'passkey'>>;
+
+interface EditRoomDialogProps {
+  room: Room;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onRoomCreate: (
-    newRoom: Omit<Room, "id" | "creatorId" | "members" | "memberIds">
-  ) => void;
+  onRoomUpdate: (updatedData: RoomUpdateData) => void;
 }
 
-export function CreateRoomDialog({
+export function EditRoomDialog({
+  room,
   open,
   onOpenChange,
-  onRoomCreate,
-}: CreateRoomDialogProps) {
-  const [roomName, setRoomName] = useState("");
-  const [description, setDescription] = useState("");
-  const [roomType, setRoomType] = useState<"public" | "private">("public");
-  const [passkey, setPasskey] = useState("");
+  onRoomUpdate,
+}: EditRoomDialogProps) {
+  // State for the form fields, initialized with current room data
+  const [description, setDescription] = useState(room.description);
+  const [roomType, setRoomType] = useState<"public" | "private">(room.type);
+  const [passkey, setPasskey] = useState(room.passkey || "");
   const { toast } = useToast();
 
-  const resetForm = () => {
-    setRoomName("");
-    setDescription("");
-    setRoomType("public");
-    setPasskey("");
-  };
+  // Reset form to current room state if dialog is reopened or room prop changes
+  useEffect(() => {
+    setDescription(room.description);
+    setRoomType(room.type);
+    setPasskey(room.passkey || "");
+  }, [room, open]);
 
-  const handleOpenChange = (isOpen: boolean) => {
-    if (!isOpen) {
-      resetForm();
-    }
-    onOpenChange(isOpen);
-  };
-
-  // ✨ This function now contains your new fallback logic
-  const getAvatarFallback = (name: string) => {
-    const words = name.trim().split(/\s+/); // Split by one or more spaces
-    if (words.length > 1) {
-      return (words[0][0] + words[1][0]).toUpperCase();
-    } else if (words[0]) {
-      return words[0][0].toUpperCase();
-    }
-    return '??'; // Fallback for empty names
-  };
-
-  const handleCreateRoom = () => {
-    if (roomType === "private" && passkey.trim().length < 8) {
+  const handleSaveChanges = () => {
+    // Validation: Ensure private rooms have a valid passkey
+    if (roomType === 'private' && passkey.trim().length < 8) {
       toast({
         title: "Passkey Too Short",
         description: "Private room passkeys must be at least 8 characters long.",
@@ -72,50 +58,40 @@ export function CreateRoomDialog({
       return;
     }
 
-    const newRoomData: Omit<
-      Room,
-      "id" | "creatorId" | "members" | "memberIds"
-    > = {
-      name: roomName,
+    const updatedData: RoomUpdateData = {
       description,
       type: roomType,
-      avatarUrl: "",
-      // ✨ We now call our new function to generate the fallback
-      avatarFallback: getAvatarFallback(roomName),
-      ...(roomType === "private" && { passkey }),
     };
 
-    onRoomCreate(newRoomData);
-    handleOpenChange(false);
+    // Only include passkey if the room is private
+    if (roomType === 'private') {
+      updatedData.passkey = passkey;
+    } else {
+      updatedData.passkey = ''; // Explicitly clear passkey for public rooms
+    }
+
+    onRoomUpdate(updatedData);
+    onOpenChange(false); // Close the dialog
   };
 
-  const isCreateDisabled =
-    !roomName.trim() ||
-    !description.trim() ||
-    (roomType === "private" && passkey.trim().length < 8);
+  const isSaveDisabled = 
+    (description.trim() === room.description && 
+     roomType === room.type && 
+     passkey === (room.passkey || '')) ||
+    (roomType === 'private' && passkey.trim().length < 8);
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
           <DialogTitle className="font-headline text-2xl">
-            Create New Room
+            Edit "{room.name}"
           </DialogTitle>
           <DialogDescription>
-            Fill in the details below to start a new chat room.
+            Make changes to your room's details below.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-6 py-4">
-          <div className="grid gap-2">
-            <Label htmlFor="name">Room Name</Label>
-            <Input
-              id="name"
-              placeholder="e.g., Synthwave & Chill"
-              value={roomName}
-              onChange={(e) => setRoomName(e.target.value)}
-            />
-          </div>
-
           <div className="grid gap-2">
             <Label htmlFor="description">Description</Label>
             <Textarea
@@ -130,18 +106,16 @@ export function CreateRoomDialog({
             <Label>Room Type</Label>
             <RadioGroup
               value={roomType}
-              onValueChange={(value) =>
-                setRoomType(value as "public" | "private")
-              }
+              onValueChange={(value) => setRoomType(value as "public" | "private")}
               className="flex gap-4"
             >
               <Label className="flex items-center gap-2 cursor-pointer rounded-md border p-4 flex-1 has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary/5">
-                <RadioGroupItem value="public" id="r1" />
+                <RadioGroupItem value="public" id="r-edit-1" />
                 <Globe className="h-5 w-5 mr-2" />
                 Public
               </Label>
               <Label className="flex items-center gap-2 cursor-pointer rounded-md border p-4 flex-1 has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary/5">
-                <RadioGroupItem value="private" id="r2" />
+                <RadioGroupItem value="private" id="r-edit-2" />
                 <Lock className="h-5 w-5 mr-2" />
                 Private
               </Label>
@@ -151,7 +125,7 @@ export function CreateRoomDialog({
             <div className="grid gap-2">
               <Label htmlFor="passkey">Passkey (Min. 8 characters)</Label>
               <Input
-                id="passkey"
+                id="passkey-edit"
                 type="password"
                 placeholder="Enter a passkey for your private room"
                 value={passkey}
@@ -166,10 +140,10 @@ export function CreateRoomDialog({
           <Button
             type="button"
             className="font-bold"
-            onClick={handleCreateRoom}
-            disabled={isCreateDisabled}
+            onClick={handleSaveChanges}
+            disabled={isSaveDisabled}
           >
-            Create Room
+            Save Changes
           </Button>
         </DialogFooter>
       </DialogContent>
