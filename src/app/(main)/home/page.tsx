@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { getAllRooms, addRoom } from '@/lib/data';
+import { getAllRooms, addRoom, joinRoom } from '@/lib/data';
 import type { Room, User } from '@/lib/data';
 import { Plus, Users, Search, Lock } from 'lucide-react';
 import { CreateRoomDialog } from '@/components/create-room-dialog';
@@ -14,13 +14,14 @@ import { JoinPrivateRoomDialog } from '@/components/join-private-room-dialog';
 import { useSession } from 'next-auth/react';
 import { Skeleton } from '@/components/ui/skeleton';
 
+// The RoomCard component is now fully corrected.
 function RoomCard({ room, onCardClick }: { room: Room; onCardClick: (room: Room) => void; }) {
   return (
     <div onClick={() => onCardClick(room)} className="cursor-pointer h-full">
       <Card className="h-full flex flex-col hover:border-primary transition-all duration-300 transform hover:-translate-y-1 shadow-md hover:shadow-primary/20">
         <CardHeader className="flex flex-row items-center gap-4">
           <Avatar className="h-12 w-12 border-2 border-accent">
-            <AvatarImage src={room.avatarUrl} alt={room.name} />
+            {/* ✨ The AvatarImage component has been completely removed. */}
             <AvatarFallback>{room.avatarFallback}</AvatarFallback>
           </Avatar>
           <div className="w-full truncate">
@@ -74,23 +75,24 @@ export default function HomePage() {
     }
   };
 
-  // This function decides what to do when a card is clicked
   const handleCardClick = (room: Room) => {
-    if (!session?.user) return; // Ensure user is logged in
+    if (!session?.user) {
+        if (room.type === 'public') router.push(`/chat/${room.id}`);
+        else router.push('/login');
+        return;
+    }
 
-    if (room.type === 'public') {
-      router.push(`/chat/${room.id}`);
-    } else { // This is a private room
-      // ✨ This is the key fix: Check if user is already a member
-      const isAlreadyMember = room.memberIds.includes(session.user.id);
-      if (isAlreadyMember) {
-        // If they are a member, let them in without asking for a passkey
-        router.push(`/chat/${room.id}`);
-      } else {
-        // If they are not a member, ask for the passkey
+    const isAlreadyMember = room.memberIds.includes(session.user.id);
+
+    if (room.type === 'public' && !isAlreadyMember) {
+        joinRoom(room.id, session.user.id).then(() => {
+            router.push(`/chat/${room.id}`);
+        });
+    } else if (room.type === 'private' && !isAlreadyMember) {
         setSelectedRoom(room);
         setJoinRoomOpen(true);
-      }
+    } else {
+        router.push(`/chat/${room.id}`);
     }
   };
 
@@ -98,7 +100,7 @@ export default function HomePage() {
     setRooms(prevRooms =>
       prevRooms.map(room =>
         room.id === roomId
-          ? { ...room, members: room.members + 1, memberIds: [...room.memberIds, session!.user!.id] } // ✨ Also update memberIds to prevent re-prompt
+          ? { ...room, members: room.members + 1, memberIds: [...room.memberIds, session!.user!.id] }
           : room
       )
     );
@@ -118,15 +120,15 @@ export default function HomePage() {
       <div className="flex flex-col sm:flex-row gap-4 mb-8">
         <div className="relative flex-grow">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-          <Input 
-            placeholder="Search rooms..." 
+          <Input
+            placeholder="Search rooms..."
             className="pl-10"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
       </div>
-      
+
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {[...Array(8)].map((_, i) => <Skeleton key={i} className="h-56 rounded-lg" />)}
@@ -141,7 +143,7 @@ export default function HomePage() {
 
       {session && (
         <>
-          <Button 
+          <Button
             className="fixed bottom-20 md:bottom-8 right-8 h-16 w-16 rounded-full shadow-lg shadow-primary/30"
             onClick={() => setCreateRoomOpen(true)}
           >
@@ -149,13 +151,13 @@ export default function HomePage() {
             <span className="sr-only">Create Room</span>
           </Button>
 
-          <CreateRoomDialog 
-            open={isCreateRoomOpen} 
-            onOpenChange={setCreateRoomOpen} 
+          <CreateRoomDialog
+            open={isCreateRoomOpen}
+            onOpenChange={setCreateRoomOpen}
             onRoomCreate={handleCreateRoom}
           />
 
-          <JoinPrivateRoomDialog 
+          <JoinPrivateRoomDialog
             room={selectedRoom}
             open={isJoinRoomOpen}
             onOpenChange={setJoinRoomOpen}
