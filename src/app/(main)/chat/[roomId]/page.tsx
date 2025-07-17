@@ -38,9 +38,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { EditRoomDialog, type RoomUpdateData } from '@/components/edit-room-dialog';
 import { useToast } from '@/hooks/use-toast';
 
-// NOTE: The Dialog component is no longer needed here, but keeping the import doesn't hurt.
-import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
-
 
 function ChatMessage({
     message,
@@ -285,22 +282,35 @@ export default function ChatRoomPage() {
 
   const handleToggleJoin = async () => {
     if (!session?.user?.id) return;
-    const optimisticIsJoined = !isJoined;
-    setIsJoined(optimisticIsJoined);
-    setRoom(prev => prev ? { ...prev, members: prev.members + (optimisticIsJoined ? 1 : -1) } : null);
 
-    try {
-        if (optimisticIsJoined) {
-            await joinRoom(roomId, session.user.id);
-        } else {
+    if (isJoined) {
+        // Logic for leaving a room
+        try {
             await leaveRoom(roomId, session.user.id);
+            toast({
+                title: "You have left the room.",
+                description: `You left ${room.name}.`,
+            });
+            router.push('/home');
+        } catch(error) {
+            console.error("Failed to leave room:", error);
+            toast({
+                title: "Error",
+                description: "Failed to leave the room.",
+                variant: "destructive",
+            });
         }
-    } catch(error) {
-        console.error("Failed to join/leave room:", error);
-        setIsJoined(!optimisticIsJoined);
-        setRoom(prev => prev ? { ...prev, members: prev.members + (optimisticIsJoined ? -1 : 1)} : null);
+    } else {
+        // Logic for joining a room
+        try {
+            await joinRoom(roomId, session.user.id);
+            setIsJoined(true);
+            setRoom(prev => prev ? { ...prev, members: prev.members + 1 } : null);
+        } catch(error) {
+            console.error("Failed to join room:", error);
+        }
     }
-  }
+  };
 
   const handleDeleteRoom = async () => {
     if (!session?.user?.id) return;
@@ -377,12 +387,10 @@ export default function ChatRoomPage() {
         <div className="border-b p-4">
           <div className="container mx-auto flex justify-between items-center">
               <div className="flex items-center gap-4">
-                  {/* ✨ This section is now corrected. The Dialog wrapper is removed. */}
                   <Avatar className="h-12 w-12 border-2 border-primary">
                     <AvatarImage src={room.avatarUrl} alt={room.name} />
                     <AvatarFallback>{room.avatarFallback}</AvatarFallback>
                   </Avatar>
-                  
                   <Popover>
                     <PopoverTrigger asChild>
                       <div className="cursor-pointer hover:bg-muted/50 p-2 rounded-md transition-colors">

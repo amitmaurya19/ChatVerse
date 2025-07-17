@@ -45,19 +45,15 @@ export function JoinPrivateRoomDialog({
 
     if (passkey === room.passkey) {
       try {
-        // ✨ This is the key fix: Only join if the user is NOT already a member.
         const isAlreadyMember = room.memberIds.includes(session.user.id);
-
         if (!isAlreadyMember) {
           await joinRoom(room.id, session.user.id);
-          onRoomJoined(room.id); // Update the member count on the home page
+          onRoomJoined(room.id);
         }
-
         toast({
           title: "Success!",
           description: `Joining ${room.name}...`,
         });
-
         router.push(`/chat/${room.id}`);
         onOpenChange(false);
       } catch (error) {
@@ -75,6 +71,13 @@ export function JoinPrivateRoomDialog({
       setError("");
     }
     onOpenChange(isOpen);
+  };
+  
+  // ✨ This new function handles the "Enter" key press
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter') {
+      handleJoin();
+    }
   };
 
   if (!room) return null;
@@ -100,7 +103,9 @@ export function JoinPrivateRoomDialog({
               type="password"
               value={passkey}
               onChange={(e) => setPasskey(e.target.value)}
+              onKeyDown={handleKeyDown} // ✨ Add the key down handler here
               className="col-span-3"
+              autoFocus
             />
           </div>
           {error && (
