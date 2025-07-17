@@ -7,18 +7,18 @@ import {
   addDoc,
   deleteDoc,
   doc,
-  updateDoc, // Make sure updateDoc is imported
+  updateDoc,
   orderBy,
   serverTimestamp,
   increment,
   arrayUnion,
   arrayRemove,
   Timestamp,
+  runTransaction, // ✨ Import `runTransaction`
 } from "firebase/firestore";
 import { db } from "./firebase";
 import type { User as NextAuthUser } from "next-auth";
 
-// Base user type from NextAuth, add your custom fields if needed
 export type User = NextAuthUser & {
   id: string;
 };
@@ -49,7 +49,6 @@ export type Message = {
   timestamp: Timestamp | null;
 };
 
-// Helper function to convert Firestore doc to a Room object
 const toRoomObject = (doc: any): Room => {
   const data = doc.data();
   return {
@@ -66,7 +65,6 @@ const toRoomObject = (doc: any): Room => {
   };
 };
 
-// Helper function to convert Firestore doc to a Message object
 const toMessageObject = (doc: any): Message => {
   const data = doc.data();
   return {
@@ -148,21 +146,13 @@ export const addRoom = async (
   } as Room;
 };
 
-/**
- * ✨ This is the new function you just added
- * Updates specific fields of a room document in Firestore.
- * @param roomId - The ID of the room to update.
- * @param updates - An object containing the fields to update.
- * @returns A promise that resolves when the update is complete.
- */
 export const updateRoom = async (
   roomId: string,
   updates: Partial<Pick<Room, 'name' | 'description' | 'type' | 'passkey'>>
 ): Promise<void> => {
   const roomRef = doc(db, 'rooms', roomId);
-  // If type is changed to public, we should ensure the passkey is removed
   if (updates.type === 'public' && updates.passkey !== undefined) {
-    updates.passkey = ''; // Set passkey to empty string
+    updates.passkey = '';
   }
   await updateDoc(roomRef, updates);
 };
@@ -180,20 +170,58 @@ export const deleteRoom = async (
   await deleteDoc(roomRef);
 };
 
+// ✨ This is the new, safer joinRoom function using a transaction
 export const joinRoom = async (roomId: string, userId: string) => {
   const roomRef = doc(db, 'rooms', roomId);
-  await updateDoc(roomRef, {
-    members: increment(1),
-    memberIds: arrayUnion(userId)
-  });
+  
+  try {
+    await runTransaction(db, async (transaction) => {
+      const roomDoc = await transaction.get(roomRef);
+      if (!roomDoc.exists()) {
+        throw "Document does not exist!";
+      }
+
+      // First, update the memberIds array
+      transaction.update(roomRef, { memberIds: arrayUnion(userId) });
+      
+      // Then, update the members count based on what the array WILL be.
+      // This ensures consistency.
+      const currentMemberIds = roomDoc.data().memberIds || [];
+      const newMemberIds = [...currentMemberIds, userId];
+      const uniqueMemberIds = new Set(newMemberIds);
+      
+      transaction.update(roomRef, { members: uniqueMemberIds.size });
+    });
+  } catch (e) {
+    console.error("Join room transaction failed: ", e);
+    throw e; // Re-throw the error so the calling function knows something went wrong
+  }
 };
 
+// ✨ This is the new, safer leaveRoom function using a transaction
 export const leaveRoom = async (roomId: string, userId: string) => {
   const roomRef = doc(db, 'rooms', roomId);
-  await updateDoc(roomRef, {
-    members: increment(-1),
-    memberIds: arrayRemove(userId)
-  });
+  
+  try {
+    await runTransaction(db, async (transaction) => {
+      const roomDoc = await transaction.get(roomRef);
+      if (!roomDoc.exists()) {
+        throw "Document does not exist!";
+      }
+      
+      // First, update the memberIds array
+      transaction.update(roomRef, { memberIds: arrayRemove(userId) });
+
+      // Then, update the members count based on the new state of the array.
+      const currentMemberIds = roomDoc.data().memberIds || [];
+      const newMemberIds = currentMemberIds.filter((id: string) => id !== userId);
+
+      transaction.update(roomRef, { members: newMemberIds.length });
+    });
+  } catch (e) {
+    console.error("Leave room transaction failed: ", e);
+    throw e; // Re-throw the error
+  }
 };
 
 
@@ -204,7 +232,7 @@ export const getMessagesForRoom = async (roomId: string): Promise<Message[]> => 
   const q = query(messagesCol, orderBy('timestamp', 'asc'));
   const snapshot = await getDocs(q);
   return snapshot.docs.map(toMessageObject);
-};
+}
 
 export const addMessageToRoom = async (
   roomId: string,
@@ -216,14 +244,14 @@ export const addMessageToRoom = async (
     author: {
       id: user.id,
       name: user.name ?? 'Anonymous',
-      avatarUrl: user.image ?? 'https://placehold.co/40x40.png',
+      avatarUrl: user.image ?? '',
     },
     text,
     timestamp: serverTimestamp(),
   };
   const docRef = await addDoc(messagesCol, newMessage);
   return docRef.id;
-};
+}
 
 export const updateMessageInRoom = async (
   roomId: string,

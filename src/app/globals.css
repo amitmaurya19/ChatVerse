@@ -2,10 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  font-family: 'PT Sans', sans-serif;
-}
-
 @layer base {
   :root {
     --background: 0 0% 100%;
@@ -64,15 +60,25 @@ body {
   }
   body {
     @apply bg-background text-foreground;
+    font-family: 'PT Sans', sans-serif;
   }
 }
-/* Hide scrollbar for Chrome, Safari and Opera */
-body::-webkit-scrollbar {
+
+/* ====================================================================== */
+/* === GLOBAL LAYOUT & SCROLLBAR HIDING ================================= */
+/* ====================================================================== */
+html, body, #__next, #root {
+  height: 100%;
+  overflow: hidden;
+}
+
+/* For Chrome, Safari, Opera, etc. */
+*::-webkit-scrollbar {
   display: none;
 }
 
-/* Hide scrollbar for IE, Edge and Firefox */
-body {
+/* For Firefox, IE, and Edge */
+* {
   -ms-overflow-style: none;  /* IE and Edge */
   scrollbar-width: none;  /* Firefox */
 }
