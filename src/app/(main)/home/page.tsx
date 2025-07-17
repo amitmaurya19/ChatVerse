@@ -77,21 +77,22 @@ export default function HomePage() {
 
   const handleCardClick = (room: Room) => {
     if (!session?.user) {
-        if (room.type === 'public') router.push(`/chat/${room.id}`);
-        else router.push('/login');
+        // If not authenticated, always redirect to login page first.
+        router.push('/login');
         return;
     }
 
-    const isAlreadyMember = room.memberIds.includes(session.user.id);
+    const isAlreadyMember = room.memberIds && session.user.id ? room.memberIds.includes(session.user.id) : false;
 
-    if (room.type === 'public' && !isAlreadyMember) {
-        joinRoom(room.id, session.user.id).then(() => {
-            router.push(`/chat/${room.id}`);
-        });
-    } else if (room.type === 'private' && !isAlreadyMember) {
+    if (isAlreadyMember) {
+        // If already a member, navigate directly to the chat room.
+        router.push(`/chat/${room.id}`);
+    } else if (room.type === 'private') {
+        // For private rooms not joined, open the join private room dialog.
         setSelectedRoom(room);
         setJoinRoomOpen(true);
     } else {
+        // For public rooms not joined, navigate to the chat room, where the user can then explicitly join.
         router.push(`/chat/${room.id}`);
     }
   };
@@ -100,10 +101,12 @@ export default function HomePage() {
     setRooms(prevRooms =>
       prevRooms.map(room =>
         room.id === roomId
-          ? { ...room, members: room.members + 1, memberIds: [...room.memberIds, session!.user!.id] }
+          ? { ...room, members: room.members + 1, memberIds: [...(room.memberIds || []), session!.user!.id] }
           : room
       )
     );
+    // After successfully joining, navigate to the chat room
+    router.push(`/chat/${roomId}`);
   };
 
   const filteredRooms = rooms.filter(room =>
