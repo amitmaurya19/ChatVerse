@@ -60,9 +60,9 @@ export default function MainLayout({ children }: MainLayoutProps) {
         <header className="sticky top-0 z-50 w-full border-b bg-background/80 backdrop-blur-sm">
           <div className="container flex h-16 items-center justify-between">
             <div className="flex items-center space-x-4">
-              <Link href="/home" className="mr-2 flex items-center space-x-2 md:mr-6">
+              <div className="mr-2 flex items-center space-x-2 md:mr-6">
                 <span className="font-bold font-headline">ChatVerse</span>
-              </Link>
+              </div>
               <MainNav />
             </div>
             <div className="flex items-center justify-end space-x-2">

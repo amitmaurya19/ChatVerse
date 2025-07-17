@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'; // ✨ AvatarImage is no longer imported
 import { getMyRooms } from '@/lib/data';
 import type { Room } from '@/lib/data';
 import { Users, MessageSquareDashed } from 'lucide-react';
@@ -17,7 +17,7 @@ function RoomCard({ room }: { room: Room }) {
       <Card className="h-full flex flex-col hover:border-primary transition-all duration-300 transform hover:-translate-y-1 shadow-md hover:shadow-primary/20">
         <CardHeader className="flex flex-row items-center gap-4">
           <Avatar className="h-12 w-12 border-2 border-accent">
-            <AvatarImage src={room.avatarUrl} alt={room.name} />
+            {/* ✨ The AvatarImage component has been removed to only show initials */}
             <AvatarFallback>{room.avatarFallback}</AvatarFallback>
           </Avatar>
            <div className="w-full truncate">
@@ -39,12 +39,13 @@ function RoomCard({ room }: { room: Room }) {
 }
 
 export default function MyRoomsPage() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const [myRooms, setMyRooms] = useState<Room[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (session?.user?.id) {
+    // This logic ensures we only fetch when the user is authenticated
+    if (status === 'authenticated' && session.user.id) {
       const fetchRooms = async () => {
         setIsLoading(true);
         const rooms = await getMyRooms(session.user.id);
@@ -52,19 +53,23 @@ export default function MyRoomsPage() {
         setIsLoading(false);
       };
       fetchRooms();
+    } else if (status === 'unauthenticated') {
+      // If the user is not logged in, stop loading and show the empty state
+      setIsLoading(false);
+      setMyRooms([]);
     }
-  }, [session]);
+  }, [status, session]);
 
   if (isLoading) {
     return (
        <div className="container mx-auto p-4 md:p-8">
-          <div className="space-y-2 mb-8">
-            <Skeleton className="h-10 w-1/3" />
-            <Skeleton className="h-6 w-1/2" />
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-56 rounded-lg" />)}
-          </div>
+         <div className="space-y-2 mb-8">
+           <Skeleton className="h-10 w-1/3" />
+           <Skeleton className="h-6 w-1/2" />
+         </div>
+         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+           {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-56 rounded-lg" />)}
+         </div>
        </div>
     )
   }
@@ -88,7 +93,8 @@ export default function MyRoomsPage() {
           <h2 className="text-2xl font-bold font-headline mb-2">No Rooms Yet</h2>
           <p className="text-muted-foreground mb-6 max-w-sm">You haven't joined any rooms. Explore public rooms to find your community.</p>
           <Button asChild>
-            <Link href="/home">Explore Rooms</Link>
+            {/* ✨ The link now correctly points to the root page */}
+            <Link href="/">Explore Rooms</Link>
           </Button>
         </div>
       )}
