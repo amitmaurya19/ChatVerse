@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useRef } from "react";
@@ -28,10 +29,6 @@ interface CreateRoomDialogProps {
   onRoomCreate: (
     newRoom: Omit<Room, "id" | "creatorId" | "members" | "memberIds">
   ) => void;
-}
-
-const imageLoader = ({ src }: { src: string }) => {
-    return src
 }
 
 export function CreateRoomDialog({
@@ -127,6 +124,7 @@ export function CreateRoomDialog({
   const isCreateDisabled =
     !roomName.trim() ||
     !description.trim() ||
+    !avatarUrl.trim() ||
     (roomType === "private" && passkey.trim().length < 8);
 
   return (
@@ -143,7 +141,7 @@ export function CreateRoomDialog({
           </DialogHeader>
           <div className="grid gap-6 py-4">
             <div className="grid gap-2">
-              <Label>Room Avatar</Label>
+              <Label>Room Avatar (Required)</Label>
               <div className="flex items-center gap-4">
                 <div className="relative">
                   <Label
@@ -156,7 +154,6 @@ export function CreateRoomDialog({
                     {avatarPreview ? (
                        <div className="relative h-full w-full">
                         <Image
-                            loader={imageLoader}
                             src={avatarPreview}
                             alt="Avatar Preview"
                             fill

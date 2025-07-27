@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useRef } from "react";
@@ -28,10 +29,6 @@ interface EditRoomDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onRoomUpdate: (updatedData: RoomUpdateData) => void;
-}
-
-const imageLoader = ({ src }: { src: string }) => {
-    return src
 }
 
 export function EditRoomDialog({
@@ -120,6 +117,8 @@ export function EditRoomDialog({
 
   const isSaveDisabled =
     (!name.trim() ||
+     !description.trim() ||
+     !avatarUrl.trim() ||
      (name.trim() === room.name &&
       description.trim() === room.description &&
       roomType === room.type &&
@@ -142,7 +141,7 @@ export function EditRoomDialog({
         <div className="grid gap-6 py-4">
 
             <div className="grid gap-2">
-                <Label>Room Avatar</Label>
+                <Label>Room Avatar (Required)</Label>
                 <div className="flex items-center gap-4">
                     <div className="relative">
                         <Label htmlFor="avatar-edit-upload" className={cn(
@@ -152,7 +151,6 @@ export function EditRoomDialog({
                             {avatarPreview ? (
                                <div className="relative h-full w-full">
                                 <Image 
-                                    loader={imageLoader} 
                                     src={avatarPreview} 
                                     alt="Avatar Preview" 
                                     fill 
