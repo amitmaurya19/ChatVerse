@@ -2,8 +2,7 @@
 
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
-import { db } from './firebase';
-import { collection, addDoc, query, where, getDocs, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { getUserByEmail, createUser } from './data';
 
 const RegisterSchema = z.object({
   name: z.string().min(2, { message: 'Name must be at least 2 characters.' }),
@@ -20,29 +19,20 @@ export async function registerUser(values: z.infer<typeof RegisterSchema>): Prom
 
   const { name, email, password } = validatedFields.data;
 
-  // Check if user already exists
-  const usersRef = collection(db, 'users');
-  const q = query(usersRef, where('email', '==', email));
-  const querySnapshot = await getDocs(q);
+  const existingUser = await getUserByEmail(email);
 
-  if (!querySnapshot.empty) {
+  if (existingUser) {
     return { error: 'An account with this email already exists.' };
   }
   
   const hashedPassword = await bcrypt.hash(password, 10);
 
   try {
-    const newUserDocRef = await addDoc(usersRef, {
+    await createUser({
       name,
       email,
       password: hashedPassword,
-      image: null, // No image for email signup, user can add later
-      createdAt: serverTimestamp(),
-    });
-
-    // Update the document with its own ID for consistency with Google provider
-    await updateDoc(newUserDocRef, {
-      id: newUserDocRef.id
+      image: '', 
     });
 
     return { success: 'User registered successfully!' };

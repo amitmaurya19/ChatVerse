@@ -1,237 +1,313 @@
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-  getDoc,
-  addDoc,
-  deleteDoc,
-  doc,
-  updateDoc,
-  orderBy,
-  serverTimestamp,
-  increment,
-  arrayUnion,
-  arrayRemove,
-  Timestamp,
-  runTransaction, // ✨ Import `runTransaction`
-} from "firebase/firestore";
-import { db } from "./firebase";
-import type { User as NextAuthUser } from "next-auth";
 
-export type User = NextAuthUser & {
-  id: string;
-};
+"use server";
 
-export type Room = {
-  id: string;
+import dbConnect from "@/lib/mongodb";
+import UserModel from "@/models/user";
+import RoomModel from "@/models/room";
+import MessageModel from "@/models/message";
+import type { User, Room, Message } from "@/lib/types";
+import { revalidatePath } from "next/cache";
+import mongoose, { Document, Types } from "mongoose";
+
+// --- Type Definitions for Mongoose Documents ---
+
+interface UserDoc extends Document {
+  _id: Types.ObjectId;
   name: string;
-  description: string;
-  type: 'public' | 'private';
-  passkey?: string;
-  avatarUrl: string;
-  avatarFallback: string;
-  creatorId: string;
-  members: number;
-  memberIds: string[];
-  isJoined?: boolean;
-  isCreator?: boolean;
-};
+  email: string;
+  image?: string;
+  password?: string;
+}
 
-export type Message = {
-  id: string;
-  author: {
-    id: string;
+interface RoomDoc extends Document {
+    _id: Types.ObjectId;
     name: string;
+    description: string;
+    type: 'public' | 'private';
+    passkey?: string;
     avatarUrl: string;
-  };
-  text: string;
-  timestamp: Timestamp | null;
-};
+    avatarFallback: string;
+    creatorId: Types.ObjectId;
+    members: number;
+    memberIds: Types.ObjectId[];
+}
 
-const toRoomObject = (doc: any): Room => {
-  const data = doc.data();
-  return {
-    id: doc.id,
-    name: data.name,
-    description: data.description,
-    type: data.type,
-    passkey: data.passkey,
-    avatarUrl: data.avatarUrl,
-    avatarFallback: data.avatarFallback,
-    creatorId: data.creatorId,
-    members: data.members,
-    memberIds: data.memberIds,
-  };
-};
+interface MessageDoc extends Document {
+    _id: Types.ObjectId;
+    roomId: Types.ObjectId;
+    author: any; // Populated field
+    text: string;
+    timestamp: Date;
+    editedAt?: Date;
+}
 
-const toMessageObject = (doc: any): Message => {
-  const data = doc.data();
-  return {
-    id: doc.id,
-    author: {
-      id: data.author.id,
-      name: data.author.name,
-      avatarUrl: data.author.avatarUrl,
-    },
-    text: data.text,
-    timestamp: data.timestamp,
-  };
-};
+// Lean document types (for .lean() queries)
+interface UserLean {
+  _id: Types.ObjectId;
+  name: string;
+  email: string;
+  image?: string;
+  password?: string;
+}
+
+interface RoomLean {
+    _id: Types.ObjectId;
+    name: string;
+    description: string;
+    type: 'public' | 'private';
+    passkey?: string;
+    avatarUrl: string;
+    avatarFallback: string;
+    creatorId: Types.ObjectId | { _id: Types.ObjectId; name: string }; // Can be populated
+    members: number;
+    memberIds: Types.ObjectId[];
+}
+
+interface MessageLean {
+    _id: Types.ObjectId;
+    roomId: Types.ObjectId;
+    author: { _id: Types.ObjectId; name: string; image?: string };
+    text: string;
+    timestamp: Date;
+    editedAt?: Date;
+}
+
 
 // --- User Functions ---
-export const getUserByEmail = async (email: string): Promise<User | null> => {
-  const usersRef = collection(db, 'users');
-  const q = query(usersRef, where('email', '==', email));
-  const querySnapshot = await getDocs(q);
 
-  if (querySnapshot.empty) {
-    return null;
-  }
-  const data = querySnapshot.docs[0].data();
+export const getUserByEmail = async (email: string): Promise<(User & { password?: string }) | null> => {
+  await dbConnect();
+  const user = await UserModel.findOne({ email }).lean<UserLean>();
+  if (!user) return null;
+
   return {
-    id: querySnapshot.docs[0].id,
-    name: data.name,
-    email: data.email,
-    image: data.image,
+    id: user._id.toString(),
+    name: user.name,
+    email: user.email,
+    image: user.image,
+    password: user.password,
   };
 };
+
+export const getUserById = async (id: string): Promise<User | null> => {
+    await dbConnect();
+    try {
+        if (!mongoose.Types.ObjectId.isValid(id)) return null;
+        const user = await UserModel.findById(id).lean<UserLean>();
+        if (!user) return null;
+        return {
+          id: user._id.toString(),
+          name: user.name,
+          email: user.email,
+          image: user.image,
+        };
+    } catch (error) {
+        console.error("Error fetching user by ID:", error);
+        return null;
+    }
+}
+
+export const createUser = async (userData: Partial<User & { password?: string }>) => {
+    await dbConnect();
+    const newUser = new UserModel(userData);
+    await newUser.save();
+    const plainUser = newUser.toObject();
+    return {
+        id: plainUser._id.toString(),
+        name: plainUser.name,
+        email: plainUser.email,
+        image: plainUser.image,
+    };
+}
+
+export const updateUserImage = async (userId: string, imageUrl: string) => {
+    await dbConnect();
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+        throw new Error("Invalid User ID");
+    }
+    await UserModel.findByIdAndUpdate(userId, { image: imageUrl });
+    revalidatePath('/profile');
+}
+
 
 // --- Room Functions ---
 
 export const getAllRooms = async (): Promise<Room[]> => {
-  const roomsCol = collection(db, 'rooms');
-  const q = query(roomsCol, orderBy('members', 'desc'));
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map(toRoomObject);
+  await dbConnect();
+  const rooms = await RoomModel.find().sort({ members: -1 }).populate('creatorId', 'name').lean<RoomLean[]>();
+  return rooms.map((room) => ({
+    id: room._id.toString(),
+    name: room.name,
+    description: room.description,
+    type: room.type,
+    passkey: room.passkey,
+    avatarUrl: room.avatarUrl,
+    avatarFallback: room.avatarFallback,
+    creatorId: (room.creatorId as any)?._id?.toString(),
+    members: room.members,
+    memberIds: room.memberIds.map((id) => id.toString()),
+  }));
 };
 
 export const getMyRooms = async (userId: string): Promise<Room[]> => {
-  const roomsCol = collection(db, 'rooms');
-  const q = query(roomsCol, where('memberIds', 'array-contains', userId));
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map(toRoomObject);
+  await dbConnect();
+  if (!mongoose.Types.ObjectId.isValid(userId)) return [];
+  const rooms = await RoomModel.find({ memberIds: new mongoose.Types.ObjectId(userId) }).populate('creatorId', 'name').lean<RoomLean[]>();
+  return rooms.map((room) => ({
+    id: room._id.toString(),
+    name: room.name,
+    description: room.description,
+    type: room.type,
+    passkey: room.passkey,
+    avatarUrl: room.avatarUrl,
+    avatarFallback: room.avatarFallback,
+    creatorId: (room.creatorId as any)?._id?.toString(),
+    members: room.members,
+    memberIds: room.memberIds.map((id) => id.toString()),
+  }));
 };
 
 export const getCreatedRooms = async (userId: string): Promise<Room[]> => {
-  const roomsCol = collection(db, 'rooms');
-  const q = query(roomsCol, where('creatorId', '==', userId));
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map(toRoomObject);
+    await dbConnect();
+    if (!mongoose.Types.ObjectId.isValid(userId)) return [];
+    const rooms = await RoomModel.find({ creatorId: new mongoose.Types.ObjectId(userId) }).populate('creatorId', 'name').lean<RoomLean[]>();
+    return rooms.map((room) => ({
+        id: room._id.toString(),
+        name: room.name,
+        description: room.description,
+        type: room.type,
+        passkey: room.passkey,
+        avatarUrl: room.avatarUrl,
+        avatarFallback: room.avatarFallback,
+        creatorId: (room.creatorId as any)?._id?.toString(),
+        members: room.members,
+        memberIds: room.memberIds.map((id) => id.toString()),
+      }));
 };
 
-export const getRoomById = async (id: string): Promise<Room | undefined> => {
-  const roomDoc = await getDoc(doc(db, 'rooms', id));
-  if (roomDoc.exists()) {
-    return toRoomObject(roomDoc);
-  }
-  return undefined;
+export const getRoomById = async (id: string): Promise<Room | null> => {
+  await dbConnect();
+  if (!mongoose.Types.ObjectId.isValid(id)) return null;
+  const room = await RoomModel.findById(id).lean<RoomLean>();
+  if (!room) return null;
+  return {
+    id: room._id.toString(),
+    name: room.name,
+    description: room.description,
+    type: room.type,
+    passkey: room.passkey,
+    avatarUrl: room.avatarUrl,
+    avatarFallback: room.avatarFallback,
+    creatorId: room.creatorId.toString(),
+    members: room.members,
+    memberIds: room.memberIds.map((id) => id.toString()),
+  };
 };
 
 export const addRoom = async (
   roomData: Omit<Room, 'id' | 'creatorId' | 'members' | 'memberIds'>,
   user: User
 ): Promise<Room> => {
-  const newRoomData = {
-    ...roomData,
-    creatorId: user.id,
-    members: 1,
-    memberIds: [user.id],
-    createdAt: serverTimestamp(),
-  };
-  const docRef = await addDoc(collection(db, 'rooms'), newRoomData);
-  return {
-    id: docRef.id,
-    ...newRoomData,
-  } as Room;
+    await dbConnect();
+    const newRoom = new RoomModel({
+        ...roomData,
+        creatorId: user.id,
+        members: 1,
+        memberIds: [user.id],
+    });
+    const savedRoom: RoomDoc = await newRoom.save();
+    revalidatePath('/home');
+    return {
+        id: savedRoom._id.toString(),
+        name: savedRoom.name,
+        description: savedRoom.description,
+        type: savedRoom.type,
+        passkey: savedRoom.passkey,
+        avatarUrl: savedRoom.avatarUrl,
+        avatarFallback: savedRoom.avatarFallback,
+        creatorId: savedRoom.creatorId.toString(),
+        members: savedRoom.members,
+        memberIds: savedRoom.memberIds.map((id) => id.toString()),
+    };
 };
 
 export const updateRoom = async (
   roomId: string,
-  updates: Partial<Pick<Room, 'name' | 'description' | 'type' | 'passkey'>>
+  updates: Partial<Room>
 ): Promise<void> => {
-  const roomRef = doc(db, 'rooms', roomId);
-  if (updates.type === 'public' && updates.passkey !== undefined) {
-    updates.passkey = '';
-  }
-  await updateDoc(roomRef, updates);
+    await dbConnect();
+    if (!mongoose.Types.ObjectId.isValid(roomId)) return;
+    await RoomModel.findByIdAndUpdate(roomId, updates);
+    revalidatePath(`/chat/${roomId}`);
 };
-
 
 export const deleteRoom = async (
   roomId: string,
   userId: string
 ): Promise<void> => {
-  const roomRef = doc(db, 'rooms', roomId);
-  const roomDoc = await getDoc(roomRef);
-  if (!roomDoc.exists() || roomDoc.data().creatorId !== userId) {
-    throw new Error("Room not found or user is not the creator.");
-  }
-  await deleteDoc(roomRef);
+    await dbConnect();
+    if (!mongoose.Types.ObjectId.isValid(roomId) || !mongoose.Types.ObjectId.isValid(userId)) return;
+    const room = await RoomModel.findById(roomId);
+    if (!room || room.creatorId.toString() !== userId) {
+        throw new Error("Room not found or user is not the creator.");
+    }
+    await RoomModel.findByIdAndDelete(roomId);
+    await MessageModel.deleteMany({ roomId });
+    revalidatePath('/home');
+    revalidatePath(`/chat/${roomId}`);
 };
 
-// ✨ This is the new, safer joinRoom function using a transaction
-export const joinRoom = async (roomId: string, userId: string) => {
-  const roomRef = doc(db, 'rooms', roomId);
-  
-  try {
-    await runTransaction(db, async (transaction) => {
-      const roomDoc = await transaction.get(roomRef);
-      if (!roomDoc.exists()) {
-        throw "Document does not exist!";
-      }
-
-      // First, update the memberIds array
-      transaction.update(roomRef, { memberIds: arrayUnion(userId) });
-      
-      // Then, update the members count based on what the array WILL be.
-      // This ensures consistency.
-      const currentMemberIds = roomDoc.data().memberIds || [];
-      const newMemberIds = [...currentMemberIds, userId];
-      const uniqueMemberIds = new Set(newMemberIds);
-      
-      transaction.update(roomRef, { members: uniqueMemberIds.size });
-    });
-  } catch (e) {
-    console.error("Join room transaction failed: ", e);
-    throw e; // Re-throw the error so the calling function knows something went wrong
-  }
+export const joinRoom = async (roomId: string, userId: string): Promise<void> => {
+    await dbConnect();
+    if (!mongoose.Types.ObjectId.isValid(roomId) || !mongoose.Types.ObjectId.isValid(userId)) return;
+    const room = await RoomModel.findById(roomId);
+    if (!room) throw new Error("Room not found");
+    
+    if (!room.memberIds.map((id: mongoose.Types.ObjectId) => id.toString()).includes(userId)) {
+        room.memberIds.push(new mongoose.Types.ObjectId(userId));
+        room.members = room.memberIds.length;
+        await room.save();
+    }
+    revalidatePath(`/chat/${roomId}`);
+    revalidatePath('/home');
 };
 
-// ✨ This is the new, safer leaveRoom function using a transaction
-export const leaveRoom = async (roomId: string, userId: string) => {
-  const roomRef = doc(db, 'rooms', roomId);
-  
-  try {
-    await runTransaction(db, async (transaction) => {
-      const roomDoc = await transaction.get(roomRef);
-      if (!roomDoc.exists()) {
-        throw "Document does not exist!";
-      }
-      
-      // First, update the memberIds array
-      transaction.update(roomRef, { memberIds: arrayRemove(userId) });
+export const leaveRoom = async (roomId: string, userId: string): Promise<void> => {
+    await dbConnect();
+    if (!mongoose.Types.ObjectId.isValid(roomId) || !mongoose.Types.ObjectId.isValid(userId)) return;
+    const room = await RoomModel.findById(roomId);
+    if (!room) throw new Error("Room not found");
 
-      // Then, update the members count based on the new state of the array.
-      const currentMemberIds = roomDoc.data().memberIds || [];
-      const newMemberIds = currentMemberIds.filter((id: string) => id !== userId);
-
-      transaction.update(roomRef, { members: newMemberIds.length });
-    });
-  } catch (e) {
-    console.error("Leave room transaction failed: ", e);
-    throw e; // Re-throw the error
-  }
+    const initialCount = room.memberIds.length;
+    const userIdObj = new mongoose.Types.ObjectId(userId);
+    room.memberIds = room.memberIds.filter((id: mongoose.Types.ObjectId) => !id.equals(userIdObj));
+    
+    if (room.memberIds.length < initialCount) {
+        room.members = room.memberIds.length;
+        await room.save();
+    }
+    revalidatePath(`/chat/${roomId}`);
+    revalidatePath('/home');
 };
 
 
 // --- Message Functions ---
 
 export const getMessagesForRoom = async (roomId: string): Promise<Message[]> => {
-  const messagesCol = collection(db, 'rooms', roomId, 'messages');
-  const q = query(messagesCol, orderBy('timestamp', 'asc'));
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map(toMessageObject);
+  await dbConnect();
+  if (!mongoose.Types.ObjectId.isValid(roomId)) return [];
+  const messages = await MessageModel.find({ roomId: new mongoose.Types.ObjectId(roomId) }).sort({ timestamp: 'asc' }).populate('author', 'name image').lean<MessageLean[]>();
+  return messages.map((msg) => ({
+    id: msg._id.toString(),
+    text: msg.text,
+    timestamp: msg.timestamp.toISOString(),
+    editedAt: msg.editedAt?.toISOString(),
+    author: {
+        id: msg.author._id.toString(),
+        name: msg.author.name,
+        avatarUrl: msg.author.image || '',
+    }
+  }));
 }
 
 export const addMessageToRoom = async (
@@ -239,35 +315,34 @@ export const addMessageToRoom = async (
   text: string,
   user: User
 ): Promise<string> => {
-  const messagesCol = collection(db, 'rooms', roomId, 'messages');
-  const newMessage = {
-    author: {
-      id: user.id,
-      name: user.name ?? 'Anonymous',
-      avatarUrl: user.image ?? '',
-    },
-    text,
-    timestamp: serverTimestamp(),
-  };
-  const docRef = await addDoc(messagesCol, newMessage);
-  return docRef.id;
+    await dbConnect();
+    if (!mongoose.Types.ObjectId.isValid(roomId)) throw new Error("Invalid Room ID");
+    const newMessage = new MessageModel({
+        roomId,
+        text,
+        author: user.id,
+    });
+    await newMessage.save();
+    revalidatePath(`/chat/${roomId}`);
+    return newMessage._id.toString();
 }
 
 export const updateMessageInRoom = async (
-  roomId: string,
-  messageId: string,
-  newText: string,
-  userId: string
-) => {
-  const messageRef = doc(db, 'rooms', roomId, 'messages', messageId);
-  const messageDoc = await getDoc(messageRef);
-
-  if (!messageDoc.exists() || messageDoc.data().author.id !== userId) {
-    throw new Error("Message not found or you don't have permission to edit.");
-  }
-
-  await updateDoc(messageRef, {
-    text: newText,
-    editedAt: serverTimestamp(),
-  });
-};
+    roomId: string,
+    messageId: string,
+    newText: string,
+    userId: string
+  ): Promise<void> => {
+    await dbConnect();
+    if (!mongoose.Types.ObjectId.isValid(roomId) || !mongoose.Types.ObjectId.isValid(messageId) || !mongoose.Types.ObjectId.isValid(userId)) return;
+    const message = await MessageModel.findById(messageId);
+  
+    if (!message || message.author.toString() !== userId) {
+      throw new Error("Message not found or you don't have permission to edit.");
+    }
+  
+    message.text = newText;
+    message.editedAt = new Date();
+    await message.save();
+    revalidatePath(`/chat/${roomId}`);
+  };

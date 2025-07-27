@@ -15,7 +15,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import type { Room } from "@/lib/data";
+import type { Room } from "@/lib/types";
 import { joinRoom } from "@/lib/data";
 
 interface JoinPrivateRoomDialogProps {
@@ -73,7 +73,6 @@ export function JoinPrivateRoomDialog({
     onOpenChange(isOpen);
   };
   
-  // ✨ This new function handles the "Enter" key press
   const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Enter') {
       handleJoin();
@@ -103,7 +102,7 @@ export function JoinPrivateRoomDialog({
               type="password"
               value={passkey}
               onChange={(e) => setPasskey(e.target.value)}
-              onKeyDown={handleKeyDown} // ✨ Add the key down handler here
+              onKeyDown={handleKeyDown}
               className="col-span-3"
               autoFocus
             />

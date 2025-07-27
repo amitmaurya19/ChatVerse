@@ -28,7 +28,9 @@ export default function LoginPage() {
               alt="ChatVerse Logo"
               width={200} 
               height={50} 
-              className="mx-auto" 
+              className="mx-auto"
+              style={{ height: 'auto', width: 'auto' }}
+              priority
             />
           </div>
           <CardTitle className="text-2xl font-headline text-primary">Welcome</CardTitle>
