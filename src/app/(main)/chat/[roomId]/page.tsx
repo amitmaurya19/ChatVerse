@@ -17,7 +17,7 @@ import {
     leaveRoom,
     updateRoom,
 } from '@/lib/data';
-import type { Message, Room, User } from '@/lib/data';
+import type { Message, Room, User } from '@/lib/types';
 import { Users, Send, DoorOpen, DoorClosed, Trash2, Pencil, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -32,12 +32,12 @@ import {
     AlertDialogTitle,
     AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { Timestamp } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EditRoomDialog, type RoomUpdateData } from '@/components/edit-room-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { getAvatarFallback } from '@/lib/utils/avatar';
 import React from 'react';
+import { ImageViewerDialog } from '@/components/image-viewer-dialog';
 
 function ChatMessage({
     message,
@@ -65,21 +65,21 @@ function ChatMessage({
     useEffect(() => {
         if (message.timestamp) {
             const fiveMinutes = 5 * 60 * 1000;
-            const messageTime = message.timestamp instanceof Timestamp ? message.timestamp.toMillis() : new Date(message.timestamp).getTime();
+            const messageTime = new Date(message.timestamp).getTime();
             const isWithinTimeLimit = Date.now() - messageTime < fiveMinutes;
             setIsEditable(isWithinTimeLimit);
         }
     }, [message.timestamp]);
-
-    const messageDate = message.timestamp ? (message.timestamp instanceof Timestamp ? message.timestamp.toDate() : new Date(message.timestamp)) : new Date();
+    
+    const messageDate = message.timestamp ? new Date(message.timestamp) : new Date();
 
     return (
-        <div className={cn("flex items-start gap-2 my-1", isCurrentUser && "flex-row-reverse")}>
-            <div className="w-10 h-10 shrink-0">
+        <div className={cn("flex items-start gap-2 my-1", isCurrentUser && "flex-row-reverse", !showAuthor && (isCurrentUser ? "ml-12" : "mr-12"))}>
+             <div className="w-10 h-10 shrink-0">
                 {showAuthor ? (
                     <Avatar className="h-10 w-10 border-2 border-accent">
                         <AvatarImage src={message.author.avatarUrl} alt={message.author.name} />
-                        <AvatarFallback>{message.author.name.charAt(0)}</AvatarFallback>
+                        <AvatarFallback>{getAvatarFallback(message.author.name)}</AvatarFallback>
                     </Avatar>
                 ) : (
                     <div className="h-10 w-10" />
@@ -132,12 +132,12 @@ function ChatMessage({
                     </div>
                     <div className="w-4 mt-1 ml-1.5">
                         {isCurrentUser && !isEditing && (
-                            <Button
+                             <Button
                                 variant="ghost"
                                 size="icon"
                                 className={cn(
-                                    "h-4 w-4 p-0 bg-transparent text-inherit hover:bg-transparent hover:text-inherit focus:bg-transparent",
-                                    isEditable ? "opacity-100" : "opacity-0 pointer-events-none"
+                                    "h-4 w-4 p-0 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity",
+                                    !isEditable && "hidden"
                                 )}
                                 onClick={() => onStartEdit(message.id, message.text)}
                             >
@@ -168,6 +168,7 @@ export default function ChatRoomPage() {
     const [newMessage, setNewMessage] = useState('');
 
     const [isEditRoomOpen, setEditRoomOpen] = useState(false);
+    const [isImageViewerOpen, setImageViewerOpen] = useState(false);
 
     const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
     const [editedText, setEditedText] = useState('');
@@ -200,7 +201,7 @@ export default function ChatRoomPage() {
         } finally {
             setIsLoading(false);
         }
-    }, [roomId, session?.user?.id]);
+    }, [roomId, session?.user?.id, notFound]);
 
     useEffect(() => {
         if (status === 'authenticated') {
@@ -212,7 +213,7 @@ export default function ChatRoomPage() {
         if (messages.length) {
             scrollToBottom('auto');
         }
-    }, [messages.length]);
+    }, [messages]);
     
     useEffect(() => {
         if (isJoined && inputRef.current) {
@@ -223,9 +224,10 @@ export default function ChatRoomPage() {
     const handleRoomUpdate = async (updatedData: RoomUpdateData) => {
         if (!room) return;
         const originalRoom = { ...room };
-        setRoom(prev => prev ? { ...prev, ...updatedData } : null);
+        const newAvatarFallback = updatedData.name ? getAvatarFallback(updatedData.name) : room.avatarFallback;
+        setRoom(prev => prev ? { ...prev, ...updatedData, avatarFallback: newAvatarFallback } : null);
         try {
-            await updateRoom(room.id, updatedData);
+            await updateRoom(room.id, { ...updatedData, avatarFallback: newAvatarFallback });
             toast({ title: "Success", description: "Room details have been updated." });
         } catch (error) {
             setRoom(originalRoom);
@@ -235,10 +237,8 @@ export default function ChatRoomPage() {
     };
 
     if (isLoading || status === 'loading') {
-        // A simplified skeleton that matches the new absolute layout
         return (
             <div className="relative h-[calc(100vh-4rem)]">
-                {/* Header Skeleton */}
                 <div className="absolute top-0 left-0 right-0 h-16 border-b p-4">
                     <div className="container mx-auto flex items-center gap-4">
                         <Skeleton className="h-12 w-12 rounded-full" />
@@ -248,7 +248,6 @@ export default function ChatRoomPage() {
                         </div>
                     </div>
                 </div>
-                {/* Footer Skeleton */}
                 <div className="absolute bottom-0 left-0 right-0 h-[80px] border-t p-4">
                     <div className="container mx-auto">
                         <Skeleton className="h-12 w-full rounded-md" />
@@ -303,22 +302,12 @@ export default function ChatRoomPage() {
         const messageText = newMessage;
         setNewMessage('');
         inputRef.current?.focus();
-        const tempId = Date.now().toString();
-        const newMessageObj: Message = {
-            id: tempId,
-            author: { id: currentUser.id, name: currentUser.name ?? 'You', avatarUrl: currentUser.image ?? '' },
-            text: messageText,
-            timestamp: Timestamp.now(),
-        };
-        setMessages(prev => [...prev, newMessageObj]);
-        setTimeout(() => scrollToBottom('smooth'), 100);
-
+        
         try {
-            const sentMessageId = await addMessageToRoom(roomId, messageText, currentUser);
-            setMessages(prev => prev.map(m => m.id === tempId ? { ...m, id: sentMessageId } : m));
+            await addMessageToRoom(roomId, messageText, currentUser);
+            fetchRoomAndMessages(); // Refetch messages
         } catch (error) {
             console.error("Failed to send message:", error);
-            setMessages(prev => prev.filter(m => m.id !== tempId));
             setNewMessage(messageText);
         }
     };
@@ -343,11 +332,13 @@ export default function ChatRoomPage() {
     return (
         <>
             <div className="relative h-[calc(100vh-4rem)] bg-background">
-                {/* Header (Fixed) */}
                 <div className="absolute top-0 left-0 right-0 h-16 z-20 border-b bg-background/80 backdrop-blur-sm">
                     <div className="container flex h-full items-center justify-between">
                          <div className="flex items-center gap-4">
-                            <Avatar className="h-12 w-12 border-2 border-primary">
+                            <Avatar 
+                                className="h-12 w-12 border-2 border-primary cursor-pointer" 
+                                onClick={() => setImageViewerOpen(true)}
+                            >
                                 <AvatarImage src={room.avatarUrl} alt={room.name} />
                                 <AvatarFallback>{getAvatarFallback(room.name)}</AvatarFallback>
                             </Avatar>
@@ -399,14 +390,13 @@ export default function ChatRoomPage() {
                     </div>
                 </div>
 
-                {/* Message Area (Scrollable) */}
                 <div
                     ref={scrollContainerRef}
                     className="absolute top-16 bottom-[80px] left-0 right-0 overflow-y-auto"
                 >
                     <div className="container mx-auto p-4">
                         {messages.map((msg, index) => {
-                            const currentMessageDate = msg.timestamp ? msg.timestamp.toDate() : new Date();
+                            const currentMessageDate = new Date(msg.timestamp);
                             const currentDayString = currentMessageDate.toISOString().split('T')[0];
                             let dateSeparator = null;
                             if (index === 0 || previousDateString !== currentDayString) {
@@ -423,7 +413,19 @@ export default function ChatRoomPage() {
                             return (
                                 <React.Fragment key={msg.id}>
                                     {dateSeparator}
-                                    <ChatMessage message={msg} isCurrentUser={msg.author.id === session?.user?.id} isEditing={editingMessageId === msg.id} onStartEdit={handleStartEdit} onCancelEdit={handleCancelEdit} onSaveEdit={handleSaveEdit} editedText={editedText} setEditedText={setEditedText} showAuthor={!isSameAuthorAsPrev} />
+                                    <div className={cn(isSameAuthorAsPrev ? "mt-1" : "mt-4")}>
+                                     <ChatMessage 
+                                        message={msg} 
+                                        isCurrentUser={msg.author.id === session?.user?.id} 
+                                        isEditing={editingMessageId === msg.id} 
+                                        onStartEdit={handleStartEdit} 
+                                        onCancelEdit={handleCancelEdit} 
+                                        onSaveEdit={handleSaveEdit} 
+                                        editedText={editedText} 
+                                        setEditedText={setEditedText} 
+                                        showAuthor={!isSameAuthorAsPrev} 
+                                     />
+                                    </div>
                                 </React.Fragment>
                             );
                         })}
@@ -431,7 +433,6 @@ export default function ChatRoomPage() {
                     </div>
                 </div>
 
-                {/* Input Bar (Fixed) */}
                 <div className="absolute bottom-0 left-0 right-0 h-[80px] z-20 border-t bg-background/80 backdrop-blur-sm">
                     <div className="container mx-auto flex h-full items-center">
                         {isJoined ? (
@@ -448,7 +449,6 @@ export default function ChatRoomPage() {
                     </div>
                 </div>
 
-                {/* Join Overlay */}
                 {!isJoined && (
                     <div className="absolute inset-0 z-30 flex items-center justify-center bg-background/90 backdrop-blur-sm">
                         <div className="bg-card p-8 rounded-lg shadow-xl text-center max-w-sm mx-auto border border-primary/20">
@@ -459,6 +459,15 @@ export default function ChatRoomPage() {
                     </div>
                 )}
             </div>
+
+            {room && (
+              <ImageViewerDialog
+                imageUrl={room.avatarUrl}
+                roomName={room.name}
+                open={isImageViewerOpen}
+                onOpenChange={setImageViewerOpen}
+              />
+            )}
 
             {room.isCreator && (
                 <EditRoomDialog room={room} open={isEditRoomOpen} onOpenChange={setEditRoomOpen} onRoomUpdate={handleRoomUpdate} />

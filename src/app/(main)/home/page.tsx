@@ -6,23 +6,23 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { getAllRooms, addRoom, joinRoom } from '@/lib/data';
-import type { Room, User } from '@/lib/data';
+import { getAllRooms, addRoom } from '@/lib/data';
+import type { Room, User } from '@/lib/types';
 import { Plus, Users, Search, Lock } from 'lucide-react';
 import { CreateRoomDialog } from '@/components/create-room-dialog';
 import { JoinPrivateRoomDialog } from '@/components/join-private-room-dialog';
 import { useSession } from 'next-auth/react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { getAvatarFallback } from '@/lib/utils/avatar';
 
-// The RoomCard component is now fully corrected.
-function RoomCard({ room, onCardClick }: { room: Room; onCardClick: (room: Room) => void; }) {
+function RoomCard({ room, onClick }: { room: Room; onClick: (room: Room) => void; }) {
   return (
-    <div onClick={() => onCardClick(room)} className="cursor-pointer h-full">
+    <div onClick={() => onClick(room)} className="cursor-pointer h-full">
       <Card className="h-full flex flex-col hover:border-primary transition-all duration-300 transform hover:-translate-y-1 shadow-md hover:shadow-primary/20">
         <CardHeader className="flex flex-row items-center gap-4">
           <Avatar className="h-12 w-12 border-2 border-accent">
-            {/* ✨ The AvatarImage component has been completely removed. */}
-            <AvatarFallback>{room.avatarFallback}</AvatarFallback>
+            <AvatarImage src={room.avatarUrl} alt={room.name} />
+            <AvatarFallback>{getAvatarFallback(room.name)}</AvatarFallback>
           </Avatar>
           <div className="w-full truncate">
             <CardTitle className="font-headline truncate flex items-center gap-2">
@@ -70,6 +70,7 @@ export default function HomePage() {
     try {
       const newRoom = await addRoom(newRoomData, session.user as User);
       setRooms(prevRooms => [newRoom, ...prevRooms]);
+      router.push(`/chat/${newRoom.id}`);
     } catch (error) {
       console.error("Failed to create room:", error);
     }
@@ -77,7 +78,6 @@ export default function HomePage() {
 
   const handleCardClick = (room: Room) => {
     if (!session?.user) {
-        // If not authenticated, always redirect to login page first.
         router.push('/login');
         return;
     }
@@ -85,14 +85,11 @@ export default function HomePage() {
     const isAlreadyMember = room.memberIds && session.user.id ? room.memberIds.includes(session.user.id) : false;
 
     if (isAlreadyMember) {
-        // If already a member, navigate directly to the chat room.
         router.push(`/chat/${room.id}`);
     } else if (room.type === 'private') {
-        // For private rooms not joined, open the join private room dialog.
         setSelectedRoom(room);
         setJoinRoomOpen(true);
     } else {
-        // For public rooms not joined, navigate to the chat room, where the user can then explicitly join.
         router.push(`/chat/${room.id}`);
     }
   };
@@ -105,7 +102,6 @@ export default function HomePage() {
           : room
       )
     );
-    // After successfully joining, navigate to the chat room
     router.push(`/chat/${roomId}`);
   };
 
@@ -139,7 +135,7 @@ export default function HomePage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {filteredRooms.map((room) => (
-            <RoomCard key={room.id} room={room} onCardClick={handleCardClick} />
+            <RoomCard key={room.id} room={room} onClick={handleCardClick} />
           ))}
         </div>
       )}

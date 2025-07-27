@@ -4,21 +4,22 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'; // ✨ AvatarImage is no longer imported
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { getMyRooms } from '@/lib/data';
-import type { Room } from '@/lib/data';
+import type { Room } from '@/lib/types';
 import { Users, MessageSquareDashed } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { getAvatarFallback } from '@/lib/utils/avatar';
 
-function RoomCard({ room }: { room: Room }) {
+function RoomCard({ room }: { room: Room; }) {
   return (
-    <Link href={`/chat/${room.id}`}>
-      <Card className="h-full flex flex-col hover:border-primary transition-all duration-300 transform hover:-translate-y-1 shadow-md hover:shadow-primary/20">
+    <Card className="h-full flex flex-col hover:border-primary transition-all duration-300 transform hover:-translate-y-1 shadow-md hover:shadow-primary/20">
+      <Link href={`/chat/${room.id}`} className="flex flex-col h-full">
         <CardHeader className="flex flex-row items-center gap-4">
           <Avatar className="h-12 w-12 border-2 border-accent">
-            {/* ✨ The AvatarImage component has been removed to only show initials */}
-            <AvatarFallback>{room.avatarFallback}</AvatarFallback>
+            <AvatarImage src={room.avatarUrl} alt={room.name} />
+            <AvatarFallback>{getAvatarFallback(room.name)}</AvatarFallback>
           </Avatar>
            <div className="w-full truncate">
             <CardTitle className="font-headline truncate">{room.name}</CardTitle>
@@ -33,8 +34,8 @@ function RoomCard({ room }: { room: Room }) {
             <span>{room.members} members</span>
           </div>
         </CardFooter>
-      </Card>
-    </Link>
+      </Link>
+    </Card>
   );
 }
 
@@ -42,9 +43,8 @@ export default function MyRoomsPage() {
   const { data: session, status } = useSession();
   const [myRooms, setMyRooms] = useState<Room[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-
+  
   useEffect(() => {
-    // This logic ensures we only fetch when the user is authenticated
     if (status === 'authenticated' && session.user.id) {
       const fetchRooms = async () => {
         setIsLoading(true);
@@ -54,12 +54,11 @@ export default function MyRoomsPage() {
       };
       fetchRooms();
     } else if (status === 'unauthenticated') {
-      // If the user is not logged in, stop loading and show the empty state
       setIsLoading(false);
       setMyRooms([]);
     }
   }, [status, session]);
-
+  
   if (isLoading) {
     return (
        <div className="container mx-auto p-4 md:p-8">
@@ -93,8 +92,7 @@ export default function MyRoomsPage() {
           <h2 className="text-2xl font-bold font-headline mb-2">No Rooms Yet</h2>
           <p className="text-muted-foreground mb-6 max-w-sm">You haven't joined any rooms. Explore public rooms to find your community.</p>
           <Button asChild>
-            {/* ✨ The link now correctly points to the root page */}
-            <Link href="/">Explore Rooms</Link>
+            <Link href="/home">Explore Rooms</Link>
           </Button>
         </div>
       )}

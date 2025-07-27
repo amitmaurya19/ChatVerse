@@ -1,12 +1,14 @@
-import NextAuth from "next-auth";
+
+import NextAuth, { AuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
-import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
-import { db } from "@/lib/firebase";
-import { getUserByEmail } from "@/lib/data";
+import { getUserByEmail, createUser } from "@/lib/data";
 import bcrypt from 'bcryptjs';
+import dbConnect from "@/lib/mongodb";
+import UserModel from "@/models/user";
+import type { User } from "@/lib/types";
 
-export const authOptions = {
+export const authOptions: AuthOptions = {
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -23,16 +25,14 @@ export const authOptions = {
             return null;
           }
 
+          await dbConnect();
           const user = await getUserByEmail(credentials.email);
 
           if (!user) {
-            // By returning null, NextAuth will redirect to the login page with a generic error.
-            // Throwing an error provides a specific message.
             throw new Error("No user found with this email.");
           }
 
           if (!user.password) {
-            // User signed up with an OAuth provider (e.g., Google)
             throw new Error("This account was created with a different sign-in method.");
           }
 
@@ -42,7 +42,6 @@ export const authOptions = {
             throw new Error("Incorrect password.");
           }
           
-          // Return user object but without the password
           return {
             id: user.id,
             name: user.name,
@@ -53,18 +52,15 @@ export const authOptions = {
       })
   ],
   callbacks: {
-    async signIn({ user, account, profile }: { user: any, account: any, profile: any }) {
+    async signIn({ user, account }: { user: any, account: any }) {
+      await dbConnect();
       if (account.provider === "google") {
-        const userRef = doc(db, "users", user.id);
-        const userSnap = await getDoc(userRef);
-        if (!userSnap.exists()) {
-          // If it's a new user, create a document in Firestore
-          await setDoc(userRef, {
-            id: user.id,
+        const existingUser = await getUserByEmail(user.email);
+        if (!existingUser) {
+           await createUser({
             name: user.name,
             email: user.email,
             image: user.image,
-            createdAt: serverTimestamp(),
           });
         }
         return true;
@@ -72,15 +68,25 @@ export const authOptions = {
       if (account.provider === "credentials") {
           return true;
       }
-      return false; // Prevent sign-in from other providers if any
+      return false; 
     },
     async session({ session, token }: { session: any, token: any }) {
-      // Add user ID to the session object
       if (session.user) {
-        session.user.id = token.sub;
+        const userFromDb = await getUserByEmail(session.user.email!);
+        if(userFromDb){
+          session.user.id = userFromDb.id;
+          session.user.image = userFromDb.image;
+        }
       }
       return session;
     },
+    async jwt({ token, user } : {token: any, user: any}) {
+        if (user) {
+            token.sub = user.id;
+            token.picture = user.image;
+        }
+        return token;
+    }
   },
   pages: {
     signIn: '/login',
